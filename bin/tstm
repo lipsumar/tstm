@@ -1,0 +1,85 @@
+#!/usr/bin/env node
+/*global process,require*/
+var childProcess = require('child_process'),
+	storage = require('../lib/storage'),
+	readPrompt = require('../lib/read-prompt'),
+	launcher = require('browser-launcher');
+
+
+/*
+#TODO
+- check the pluginName/index.html exists
+- check if testm.json exist, default to a default one if not
+- dev mode: quit gracefully when hitting "Q"
+- dev mode: quit launched browsers on exit
+ */
+
+
+// CONSTANTS
+var TESTS_PATH = storage.get('tests_path');//'typo3conf/ext/ef/Resources/Public/JavaScripts/Tests/Plugins/';
+
+/*
+How to use:
+
+# for test mode
+tstm <pluginName>
+
+# for CI mode
+tstm ci <pluginName>
+
+ */
+
+if(!TESTS_PATH || TESTS_PATH==='undefined'){
+	readPrompt('You need to set the directory of your tests (relative from here):', function(input){
+		storage.set('tests_path', input);
+		TESTS_PATH = input;
+		start();
+	});
+}else{
+	start();
+}
+
+
+function start(){
+	var pluginName = process.argv[2],
+		testemParams = [],
+		mode = 'dev';
+
+	if(process.argv[2]==='ci'){
+		pluginName = process.argv[3];
+		testemParams.push('ci');
+		mode = 'ci';
+	}
+
+	testemParams.push('--file');
+	testemParams.push(TESTS_PATH + pluginName + '/testem.json');
+
+	testemParams.push('--test_page');
+	testemParams.push(TESTS_PATH + pluginName + '/index.html');
+
+
+
+	childProcess.spawn('testem', testemParams, {stdio:'inherit'});
+
+	if(mode==='dev'){
+		launcher(function(err, launch){
+			if (err) return console.error(err);
+
+			var browser,
+				browserCallback = function(){
+					if (err) return console.error(err);
+				};
+
+			for (var i = 0; i < launch.browsers.local.length; i++) {
+				browser = launch.browsers.local[i];
+				if(browser.name==='phantom') continue;
+
+				launch('http://localhost:7357', {browser:browser.name}, browserCallback);
+			}
+		});
+	}
+
+
+}
+
+
